@@ -313,7 +313,17 @@ function ProductForm({ open, onOpenChange, editing, onSaved }: {
 
     let error;
     if (editing) {
+      const delta = payload.stock_quantity - editing.stock_quantity;
       ({ error } = await supabase.from("products").update(payload).eq("id", editing.id));
+      if (!error && delta !== 0) {
+        await supabase.from("stock_movements").insert({
+          product_id: editing.id,
+          movement_type: delta > 0 ? "in" : "out",
+          quantity: Math.abs(delta),
+          reference_type: "adjustment",
+          notes: "Manual stock adjustment",
+        });
+      }
     } else {
       ({ error } = await supabase.from("products").insert(payload));
       // record initial stock movement
@@ -393,8 +403,8 @@ function ProductForm({ open, onOpenChange, editing, onSaved }: {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="Stock Qty">
-              <Input type="number" value={form.stock_quantity} onChange={e => setForm({ ...form, stock_quantity: Number(e.target.value) })} className="h-11 font-mono" disabled={!!editing} />
-              {editing && <p className="text-[10px] text-muted-foreground mt-1">Use purchases to add stock</p>}
+              <Input type="number" value={form.stock_quantity} onChange={e => setForm({ ...form, stock_quantity: Number(e.target.value) })} className="h-11 font-mono" />
+              <p className="text-[10px] text-muted-foreground mt-1">{editing ? "Tip: prefer Purchases for stock-in audit trail" : "Initial opening stock"}</p>
             </Field>
             <Field label="Low alert at">
               <Input type="number" value={form.min_stock_threshold} onChange={e => setForm({ ...form, min_stock_threshold: Number(e.target.value) })} className="h-11 font-mono" />
