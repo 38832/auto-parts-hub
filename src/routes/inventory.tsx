@@ -313,7 +313,17 @@ function ProductForm({ open, onOpenChange, editing, onSaved }: {
 
     let error;
     if (editing) {
+      const delta = payload.stock_quantity - editing.stock_quantity;
       ({ error } = await supabase.from("products").update(payload).eq("id", editing.id));
+      if (!error && delta !== 0) {
+        await supabase.from("stock_movements").insert({
+          product_id: editing.id,
+          movement_type: delta > 0 ? "in" : "out",
+          quantity: Math.abs(delta),
+          reference_type: "adjustment",
+          notes: "Manual stock adjustment",
+        });
+      }
     } else {
       ({ error } = await supabase.from("products").insert(payload));
       // record initial stock movement
