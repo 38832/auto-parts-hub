@@ -1,0 +1,154 @@
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { RequireAuth } from "@/components/RequireAuth";
+import { AppShell } from "@/components/AppShell";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { inr } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Download, Share2, Printer } from "lucide-react";
+import { format } from "date-fns";
+import { generateInvoicePDF, shareViaWhatsApp } from "@/lib/invoice-pdf";
+import { toast } from "sonner";
+
+export const Route = createFileRoute("/invoices/$id")({
+  component: () => (
+    <RequireAuth><AppShell><InvoiceDetail /></AppShell></RequireAuth>
+  ),
+});
+
+function InvoiceDetail() {
+  const { id } = Route.useParams();
+  const navigate = useNavigate();
+  const [inv, setInv] = useState<any>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [shopName, setShopName] = useState<string>("SparePilot Shop");
+
+  useEffect(() => {
+    void (async () => {
+      const [{ data: i }, { data: it }, { data: profile }] = await Promise.all([
+        supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
+        supabase.from("invoice_items").select("*").eq("invoice_id", id),
+        supabase.from("profiles").select("shop_name").maybeSingle(),
+      ]);
+      setInv(i);
+      setItems(it ?? []);
+      if (profile?.shop_name) setShopName(profile.shop_name);
+    })();
+  }, [id]);
+
+  function buildData() {
+    return { ...inv, shop_name: shopName, items };
+  }
+
+  function handleDownload() {
+    if (!inv) return;
+    const doc = generateInvoicePDF(buildData());
+    doc.save(`${inv.invoice_number}.pdf`);
+  }
+  function handlePrint() {
+    if (!inv) return;
+    const doc = generateInvoicePDF(buildData());
+    doc.autoPrint();
+    window.open(doc.output("bloburl"), "_blank");
+  }
+  function handleWhatsApp() {
+    if (!inv) return;
+    if (!inv.customer_phone) toast.info("No customer phone — opening generic share");
+    shareViaWhatsApp(buildData());
+  }
+
+  if (!inv) return <div className="text-muted-foreground">Loading invoice…</div>;
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/invoices" })}>
+          <ArrowLeft className="h-4 w-4 mr-1" /> All invoices
+        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleDownload}><Download className="h-4 w-4 mr-1" /> PDF</Button>
+          <Button variant="outline" size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" /> Print</Button>
+          <Button size="sm" onClick={handleWhatsApp}><Share2 className="h-4 w-4 mr-1" /> WhatsApp</Button>
+        </div>
+      </div>
+
+      <div className="bg-surface border border-border rounded-md shadow-sm overflow-hidden">
+        <div className="bg-sidebar text-sidebar-foreground p-6 flex justify-between items-start">
+          <div>
+            <div className="text-primary text-xs uppercase tracking-[0.2em] font-semibold">Tax Invoice</div>
+            <h1 className="text-2xl font-bold mt-1">{shopName}</h1>
+          </div>
+          <div className="text-right">
+            <div className="font-mono font-semibold">{inv.invoice_number}</div>
+            <div className="text-xs text-sidebar-foreground/70 mt-1">{format(new Date(inv.created_at), "dd MMM yyyy, h:mm a")}</div>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-semibold">Bill To</div>
+            <div className="font-semibold mt-1">{inv.customer_name || "Walk-in Customer"}</div>
+            {inv.customer_phone && <div className="text-sm text-muted-foreground">{inv.customer_phone}</div>}
+            {inv.customer_gstin && <div className="text-xs text-muted-foreground font-mono">GSTIN: {inv.customer_gstin}</div>}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border border-border rounded">
+              <thead className="bg-surface-alt">
+                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2">Part #</th>
+                  <th className="px-3 py-2">Item</th>
+                  <th className="px-3 py-2 text-right">Qty</th>
+                  <th className="px-3 py-2 text-right">Rate</th>
+                  <th className="px-3 py-2 text-right">GST</th>
+                  <th className="px-3 py-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(it => (
+                  <tr key={it.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-mono text-xs">{it.part_number}</td>
+                    <td className="px-3 py-2">{it.part_name}</td>
+                    <td className="px-3 py-2 text-right num">{it.quantity}</td>
+                    <td className="px-3 py-2 text-right num">{inr(it.unit_price)}</td>
+                    <td className="px-3 py-2 text-right num">{it.gst_rate}%</td>
+                    <td className="px-3 py-2 text-right num font-medium">{inr(it.line_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end">
+            <div className="w-full max-w-xs space-y-2 text-sm">
+              <Row label="Subtotal" value={inr(inv.subtotal)} />
+              {inv.discount > 0 && <Row label="Discount" value={`- ${inr(inv.discount)}`} />}
+              <Row label="GST" value={inr(inv.gst_amount)} />
+              <div className="border-t border-border pt-2 flex justify-between items-baseline">
+                <span className="font-semibold">TOTAL</span>
+                <span className="num text-2xl font-bold text-primary">{inr(inv.total)}</span>
+              </div>
+              <Row label={`Paid (${inv.payment_mode})`} value={inr(inv.paid_amount)} />
+              {inv.credit_amount > 0 && (
+                <div className="flex justify-between text-warning font-semibold">
+                  <span>Credit Due</span><span className="num">{inr(inv.credit_amount)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {inv.notes && <div className="text-sm text-muted-foreground border-t border-border pt-4">📝 {inv.notes}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="num">{value}</span>
+    </div>
+  );
+}
