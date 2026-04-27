@@ -393,8 +393,8 @@ function ProductForm({ open, onOpenChange, editing, onSaved }: {
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="Stock Qty">
-              <Input type="number" value={form.stock_quantity} onChange={e => setForm({ ...form, stock_quantity: Number(e.target.value) })} className="h-11 font-mono" disabled={!!editing} />
-              {editing && <p className="text-[10px] text-muted-foreground mt-1">Use purchases to add stock</p>}
+              <Input type="number" value={form.stock_quantity} onChange={e => setForm({ ...form, stock_quantity: Number(e.target.value) })} className="h-11 font-mono" />
+              <p className="text-[10px] text-muted-foreground mt-1">{editing ? "Tip: prefer Purchases for stock-in audit trail" : "Initial opening stock"}</p>
             </Field>
             <Field label="Low alert at">
               <Input type="number" value={form.min_stock_threshold} onChange={e => setForm({ ...form, min_stock_threshold: Number(e.target.value) })} className="h-11 font-mono" />
