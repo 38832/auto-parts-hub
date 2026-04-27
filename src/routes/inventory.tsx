@@ -71,7 +71,7 @@ function InventoryPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("products").select("*").order("part_name");
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     setProducts((data ?? []) as Product[]);
     setLoading(false);
   }
@@ -95,7 +95,7 @@ function InventoryPage() {
 
   async function handleDelete(p: Product) {
     const { error } = await supabase.from("products").delete().eq("id", p.id);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else {
       toast.success(`Deleted ${p.part_name}`);
       setProducts(prev => prev.filter(x => x.id !== p.id));
@@ -339,7 +339,7 @@ function ProductForm({ open, onOpenChange, editing, onSaved }: {
       }
     }
     setSaving(false);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else { toast.success(editing ? "Part updated" : "Part added"); onSaved(); }
   }
 

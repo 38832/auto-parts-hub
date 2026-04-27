@@ -142,7 +142,7 @@ function BillingPage() {
       notes: notes || null,
     }).select().single();
 
-    if (invErr || !invoice) { setSaving(false); toast.error(invErr?.message || "Failed"); return; }
+    if (invErr || !invoice) { setSaving(false); toast.error(friendlyError(invErr, "Failed to create invoice")); return; }
 
     // insert items
     const itemsPayload = cart.map(i => ({
