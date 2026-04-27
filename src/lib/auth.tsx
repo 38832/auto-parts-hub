@@ -53,14 +53,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error?.message ?? null };
+    const normalizedEmail = email.trim().toLowerCase();
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+    if (!error) return { error: null };
+    if (error.message.toLowerCase().includes("invalid login credentials")) {
+      return { error: "Invalid email or password. If you just signed up, verify your email before signing in." };
+    }
+    return { error: error.message };
   }
 
   async function signUp(email: string, password: string, fullName: string, shopName: string) {
     const redirectUrl = `${window.location.origin}/`;
+    const normalizedEmail = email.trim().toLowerCase();
     const { error } = await supabase.auth.signUp({
-      email,
+      email: normalizedEmail,
       password,
       options: {
         emailRedirectTo: redirectUrl,
