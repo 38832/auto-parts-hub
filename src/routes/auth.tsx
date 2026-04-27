@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,9 +22,10 @@ function AuthPage() {
   const [fullName, setFullName] = useState("");
   const [shopName, setShopName] = useState("");
 
-  if (user) {
-    setTimeout(() => navigate({ to: "/dashboard" }), 0);
-  }
+  useEffect(() => {
+    if (!user) return;
+    navigate({ to: "/dashboard" });
+  }, [navigate, user]);
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
