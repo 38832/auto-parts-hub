@@ -153,7 +153,7 @@ function PaymentDialog({ customer, onClose, onSaved }: any) {
     if (amt > Number(customer.credit_balance)) { toast.error("Cannot exceed credit balance"); return; }
     const newBal = Number(customer.credit_balance) - amt;
     const { error: e1 } = await supabase.from("customers").update({ credit_balance: newBal }).eq("id", customer.id);
-    const { error: e2 } = await supabase.from("payments").insert({ party_type: "customer", party_id: customer.id, amount: amt, payment_mode: mode });
+    const { error: e2 } = await supabase.from("payments").insert({ party_type: "customer", party_id: customer.id, amount: amt, payment_mode: mode as any });
     if (e1 || e2) toast.error((e1 || e2)!.message);
     else { toast.success(`Received ${inr(amt)}`); setAmount(""); onSaved(); }
   }
