@@ -3,6 +3,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errors";
 import { inr } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,7 +118,7 @@ function CustomerForm({ open, onOpenChange, editing, onSaved }: any) {
     let error;
     if (editing) ({ error } = await supabase.from("customers").update(form).eq("id", editing.id));
     else ({ error } = await supabase.from("customers").insert(form));
-    if (error) toast.error(error.message); else { toast.success(editing ? "Updated" : "Added"); onSaved(); }
+    if (error) toast.error(friendlyError(error)); else { toast.success(editing ? "Updated" : "Added"); onSaved(); }
   }
 
   return (
@@ -154,7 +155,7 @@ function PaymentDialog({ customer, onClose, onSaved }: any) {
     const newBal = Number(customer.credit_balance) - amt;
     const { error: e1 } = await supabase.from("customers").update({ credit_balance: newBal }).eq("id", customer.id);
     const { error: e2 } = await supabase.from("payments").insert({ party_type: "customer", party_id: customer.id, amount: amt, payment_mode: mode as any });
-    if (e1 || e2) toast.error((e1 || e2)!.message);
+    if (e1 || e2) toast.error(friendlyError(e1 || e2));
     else { toast.success(`Received ${inr(amt)}`); setAmount(""); onSaved(); }
   }
 

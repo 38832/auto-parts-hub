@@ -3,6 +3,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errors";
 import { inr } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -119,7 +120,7 @@ function SupplierForm({ open, onOpenChange, editing, onSaved }: any) {
     let error;
     if (editing) ({ error } = await supabase.from("suppliers").update(form).eq("id", editing.id));
     else ({ error } = await supabase.from("suppliers").insert(form));
-    if (error) toast.error(error.message); else { toast.success(editing ? "Updated" : "Added"); onSaved(); }
+    if (error) toast.error(friendlyError(error)); else { toast.success(editing ? "Updated" : "Added"); onSaved(); }
   }
 
   return (
@@ -184,7 +185,7 @@ function PurchaseDialog({ supplier, onClose, onSaved }: any) {
       invoice_ref: invoiceRef || null,
       subtotal: total, total, paid_amount: Number(paid || 0), due_amount: due,
     }).select().single();
-    if (error || !purchase) { setSaving(false); toast.error(error?.message || "Failed"); return; }
+    if (error || !purchase) { setSaving(false); toast.error(friendlyError(error, "Failed to save purchase")); return; }
 
     await supabase.from("purchase_items").insert(rows.map(r => ({
       purchase_id: purchase.id, product_id: r.product_id, part_number: r.part_number,
