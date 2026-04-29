@@ -230,23 +230,46 @@ function BillingPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search part name, number, or vehicle…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (suggestions.length === 0) return;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setActiveIdx(i => Math.min(i + 1, suggestions.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setActiveIdx(i => Math.max(i - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const pick = suggestions[activeIdx];
+                    if (pick) addToCart(pick);
+                  } else if (e.key === "Escape") {
+                    setSearch("");
+                  }
+                }}
+                placeholder="Search part name, number, brand or vehicle…"
                 className="pl-9 h-12 text-base"
                 autoFocus
               />
             </div>
             {suggestions.length > 0 && (
               <div className="absolute left-4 right-4 top-full mt-1 bg-popover border border-border rounded-md shadow-lg z-20 overflow-hidden">
-                {suggestions.map(p => (
+                {suggestions.map((p, idx) => (
                   <button
-                    key={p.id} onClick={() => addToCart(p)}
+                    key={p.id}
+                    onMouseDown={e => { e.preventDefault(); addToCart(p); }}
+                    onMouseEnter={() => setActiveIdx(idx)}
                     disabled={p.stock_quantity === 0}
-                    className="w-full px-4 py-2.5 flex justify-between items-center hover:bg-surface-alt text-left disabled:opacity-50"
+                    className={`w-full px-4 py-2.5 flex justify-between items-center text-left disabled:opacity-50 ${idx === activeIdx ? "bg-surface-alt" : "hover:bg-surface-alt"}`}
                   >
                     <div className="min-w-0">
                       <div className="font-medium text-sm truncate">{p.part_name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{p.part_number}</div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">
+                        {p.part_number}
+                        {p.brand ? ` · ${p.brand}` : ""}
+                        {p.vehicle_compatibility.length > 0 ? ` · ${p.vehicle_compatibility.slice(0, 2).join(", ")}` : ""}
+                      </div>
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <div className="num font-semibold text-sm">{inr(p.selling_price)}</div>
