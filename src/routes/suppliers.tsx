@@ -146,11 +146,31 @@ function SupplierForm({ open, onOpenChange, editing, onSaved }: any) {
 }
 
 interface PurchaseRow { product_id: string; part_number: string; part_name: string; quantity: number; unit_cost: number; current_stock: number; }
+interface NewProductForm {
+  part_number: string;
+  part_name: string;
+  brand: string;
+  category: string;
+  purchase_price: number | "";
+  selling_price: number | "";
+  min_stock_threshold: number | "";
+}
 
 function PurchaseDialog({ supplier, onClose, onSaved }: any) {
   const [products, setProducts] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<PurchaseRow[]>([]);
+  const [orderFrequency, setOrderFrequency] = useState<Record<string, number>>({});
+  const [newItemOpen, setNewItemOpen] = useState(false);
+  const [newItem, setNewItem] = useState<NewProductForm>({
+    part_number: "",
+    part_name: "",
+    brand: "",
+    category: "",
+    purchase_price: "",
+    selling_price: "",
+    min_stock_threshold: 5,
+  });
   const [paid, setPaid] = useState<number | "">("");
   const [invoiceRef, setInvoiceRef] = useState("");
   const [saving, setSaving] = useState(false);
@@ -158,15 +178,40 @@ function PurchaseDialog({ supplier, onClose, onSaved }: any) {
   useEffect(() => {
     if (supplier) {
       void supabase.from("products").select("id, part_number, part_name, purchase_price, stock_quantity").order("part_name").then(({ data }) => setProducts(data ?? []));
+      void supabase
+        .from("purchase_items")
+        .select("product_id,purchases!inner(supplier_id)")
+        .eq("purchases.supplier_id", supplier.id)
+        .then(({ data }) => {
+          const counts: Record<string, number> = {};
+          for (const entry of data ?? []) {
+            const productId = entry.product_id as string | null;
+            if (!productId) continue;
+            counts[productId] = (counts[productId] ?? 0) + 1;
+          }
+          setOrderFrequency(counts);
+        });
       setRows([]); setPaid(""); setInvoiceRef(""); setSearch("");
+      setNewItemOpen(false);
+      setNewItem({ part_number: "", part_name: "", brand: "", category: "", purchase_price: "", selling_price: "", min_stock_threshold: 5 });
     }
   }, [supplier]);
 
   const suggestions = useMemo(() => {
     const s = search.trim().toLowerCase();
     if (!s) return [];
-    return products.filter(p => p.part_name.toLowerCase().includes(s) || p.part_number.toLowerCase().includes(s)).slice(0, 6);
-  }, [products, search]);
+    return products
+      .filter(p => p.part_name.toLowerCase().includes(s) || p.part_number.toLowerCase().includes(s))
+      .sort((a, b) => (orderFrequency[b.id] ?? 0) - (orderFrequency[a.id] ?? 0))
+      .slice(0, 6);
+  }, [products, search, orderFrequency]);
+
+  const frequentlyOrdered = useMemo(() => {
+    return [...products]
+      .filter((p) => (orderFrequency[p.id] ?? 0) > 0)
+      .sort((a, b) => (orderFrequency[b.id] ?? 0) - (orderFrequency[a.id] ?? 0))
+      .slice(0, 5);
+  }, [products, orderFrequency]);
 
   function addRow(p: any) {
     if (rows.find(r => r.product_id === p.id)) return;
@@ -209,6 +254,33 @@ function PurchaseDialog({ supplier, onClose, onSaved }: any) {
     onSaved();
   }
 
+  async function createAndAddItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newItem.part_number.trim() || !newItem.part_name.trim()) {
+      toast.error("Part number and part name are required");
+      return;
+    }
+    const payload = {
+      part_number: newItem.part_number.trim(),
+      part_name: newItem.part_name.trim(),
+      brand: newItem.brand.trim() || null,
+      category: newItem.category.trim() || null,
+      purchase_price: Number(newItem.purchase_price || 0),
+      selling_price: Number(newItem.selling_price || 0),
+      min_stock_threshold: Number(newItem.min_stock_threshold || 5),
+    };
+    const { data, error } = await supabase.from("products").insert(payload).select("id, part_number, part_name, purchase_price, stock_quantity").single();
+    if (error || !data) {
+      toast.error(friendlyError(error, "Failed to create item"));
+      return;
+    }
+    setProducts((prev) => [...prev, data]);
+    addRow(data);
+    setNewItemOpen(false);
+    setNewItem({ part_number: "", part_name: "", brand: "", category: "", purchase_price: "", selling_price: "", min_stock_threshold: 5 });
+    toast.success("New item created and added to purchase");
+  }
+
   if (!supplier) return null;
 
   return (
@@ -228,6 +300,49 @@ function PurchaseDialog({ supplier, onClose, onSaved }: any) {
                   </button>
                 ))}
               </div>
+            )}
+          </div>
+
+          {frequentlyOrdered.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Frequently ordered from this supplier</div>
+              <div className="flex flex-wrap gap-2">
+                {frequentlyOrdered.map((p) => (
+                  <Button key={p.id} type="button" size="sm" variant="outline" onClick={() => addRow(p)}>
+                    {p.part_name} <span className="ml-1 text-xs text-muted-foreground">({orderFrequency[p.id]}x)</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="border border-dashed border-border rounded-md p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">Need a new item?</div>
+                <div className="text-xs text-muted-foreground">Create a SKU directly while recording this supplier order.</div>
+              </div>
+              <Button type="button" variant="outline" onClick={() => setNewItemOpen(v => !v)}>{newItemOpen ? "Hide" : "Add New Item"}</Button>
+            </div>
+            {newItemOpen && (
+              <form onSubmit={createAndAddItem} className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Part number *" value={newItem.part_number} onChange={e => setNewItem({ ...newItem, part_number: e.target.value })} />
+                  <Input placeholder="Part name *" value={newItem.part_name} onChange={e => setNewItem({ ...newItem, part_name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input placeholder="Brand" value={newItem.brand} onChange={e => setNewItem({ ...newItem, brand: e.target.value })} />
+                  <Input placeholder="Category" value={newItem.category} onChange={e => setNewItem({ ...newItem, category: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input type="number" step="0.01" placeholder="Purchase price" value={newItem.purchase_price} onChange={e => setNewItem({ ...newItem, purchase_price: e.target.value === "" ? "" : Number(e.target.value) })} />
+                  <Input type="number" step="0.01" placeholder="Selling price" value={newItem.selling_price} onChange={e => setNewItem({ ...newItem, selling_price: e.target.value === "" ? "" : Number(e.target.value) })} />
+                  <Input type="number" min={0} placeholder="Min stock" value={newItem.min_stock_threshold} onChange={e => setNewItem({ ...newItem, min_stock_threshold: e.target.value === "" ? "" : Number(e.target.value) })} />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm">Create & Add</Button>
+                </div>
+              </form>
             )}
           </div>
 
