@@ -18,6 +18,7 @@ const PG_MESSAGES: Record<string, string> = {
   "42P01": "Requested data is not available.",
   "PGRST116": "No matching record found.",
   "PGRST301": "You don't have permission to perform this action.",
+  "PGRST205": "Billing tables are missing. Run the latest database migrations.",
 };
 
 export function friendlyError(err: AnyError, fallback = "Something went wrong. Please try again."): string {
@@ -37,6 +38,9 @@ export function friendlyError(err: AnyError, fallback = "Something went wrong. P
   }
   if (msg.includes("network") || msg.includes("failed to fetch")) {
     return "Network error. Please check your connection and try again.";
+  }
+  if (msg.includes("relation") && msg.includes("does not exist")) {
+    return "Billing tables are missing. Run the latest database migrations.";
   }
   if (msg.includes("jwt") || msg.includes("token")) {
     return "Your session has expired. Please sign in again.";
