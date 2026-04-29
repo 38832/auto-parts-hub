@@ -29,6 +29,7 @@ interface Customer { id: string; name: string; phone: string | null; gstin: stri
 interface CartItem {
   product_id: string; part_number: string; part_name: string;
   quantity: number; unit_price: number; gst_rate: number; max_stock: number;
+  brand: string | null; vehicles: string[];
 }
 
 function BillingPage() {
@@ -129,6 +130,7 @@ function BillingPage() {
         product_id: p.id, part_number: p.part_number, part_name: p.part_name,
         quantity: 1, unit_price: Number(p.selling_price), gst_rate: Number(p.gst_rate),
         max_stock: p.stock_quantity,
+        brand: p.brand, vehicles: p.vehicle_compatibility ?? [],
       }];
     });
     setSearch("");
@@ -306,8 +308,14 @@ function BillingPage() {
                 {cart.map(i => (
                   <li key={i.product_id} className="px-4 py-3 grid grid-cols-12 gap-2 items-center">
                     <div className="col-span-12 md:col-span-5 min-w-0">
-                      <div className="font-medium text-sm truncate">{i.part_name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{i.part_number}</div>
+                      <div className="font-medium text-sm truncate">
+                        {i.part_name}
+                        {i.brand ? <span className="text-muted-foreground font-normal"> · {i.brand}</span> : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        <span className="font-mono">{i.part_number}</span>
+                        {i.vehicles.length > 0 ? ` · ${i.vehicles.join(", ")}` : ""}
+                      </div>
                     </div>
                     <div className="col-span-4 md:col-span-2 flex items-center">
                       <Input
