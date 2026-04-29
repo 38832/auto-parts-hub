@@ -20,6 +20,10 @@ interface InvoiceData {
   items: Array<{
     part_number: string;
     part_name: string;
+    product?: {
+      brand?: string | null;
+      vehicle_compatibility?: string[] | null;
+    } | null;
     quantity: number;
     unit_price: number;
     gst_rate: number;
@@ -63,7 +67,13 @@ export function generateInvoicePDF(inv: InvoiceData): jsPDF {
     startY: 64,
     head: [["Part #", "Item", "Qty", "Rate", "GST %", "Total"]],
     body: inv.items.map(i => [
-      i.part_number, i.part_name, String(i.quantity),
+      i.part_number,
+      [
+        i.part_name,
+        i.product?.brand ? `Brand: ${i.product.brand}` : null,
+        i.product?.vehicle_compatibility?.length ? `Car: ${i.product.vehicle_compatibility.join(", ")}` : null,
+      ].filter(Boolean).join("\n"),
+      String(i.quantity),
       Number(i.unit_price).toFixed(2),
       `${i.gst_rate}%`,
       Number(i.line_total).toFixed(2),

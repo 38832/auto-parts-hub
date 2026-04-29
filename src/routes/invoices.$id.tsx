@@ -27,7 +27,10 @@ function InvoiceDetail() {
     void (async () => {
       const [{ data: i }, { data: it }, { data: profile }] = await Promise.all([
         supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
-        supabase.from("invoice_items").select("*").eq("invoice_id", id),
+        supabase
+          .from("invoice_items")
+          .select("*, product:products(brand, vehicle_compatibility)")
+          .eq("invoice_id", id),
         supabase.from("profiles").select("shop_name").maybeSingle(),
       ]);
       setInv(i);
