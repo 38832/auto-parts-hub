@@ -23,6 +23,7 @@ export const Route = createFileRoute("/billing")({
 interface Product {
   id: string; part_number: string; part_name: string; selling_price: number;
   stock_quantity: number; gst_rate: number; unit: string; vehicle_compatibility: string[];
+  brand: string | null; category: string | null;
 }
 interface Customer { id: string; name: string; phone: string | null; gstin: string | null; }
 interface CartItem {
@@ -46,11 +47,12 @@ function BillingPage() {
   const [saving, setSaving] = useState(false);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [customerQuery, setCustomerQuery] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => { void load(); }, []);
   async function load() {
     const [p, c] = await Promise.all([
-      supabase.from("products").select("id, part_number, part_name, selling_price, stock_quantity, gst_rate, unit, vehicle_compatibility").order("part_name"),
+      supabase.from("products").select("id, part_number, part_name, selling_price, stock_quantity, gst_rate, unit, vehicle_compatibility, brand, category").order("part_name"),
       supabase.from("customers").select("id, name, phone, gstin").order("name"),
     ]);
     setProducts((p.data ?? []) as Product[]);
@@ -58,14 +60,51 @@ function BillingPage() {
   }
 
   const suggestions = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return products.filter(p =>
-      p.part_name.toLowerCase().includes(q) ||
-      p.part_number.toLowerCase().includes(q) ||
-      p.vehicle_compatibility.some(v => v.toLowerCase().includes(q))
-    ).slice(0, 8);
+    const raw = search.trim().toLowerCase();
+    if (!raw) return [];
+    const tokens = raw.split(/\s+/).filter(Boolean);
+
+    const scoreProduct = (p: Product): number => {
+      const name = p.part_name.toLowerCase();
+      const num = p.part_number.toLowerCase();
+      const brand = (p.brand ?? "").toLowerCase();
+      const cat = (p.category ?? "").toLowerCase();
+      const vehicles = p.vehicle_compatibility.map(v => v.toLowerCase());
+      const haystack = [name, num, brand, cat, ...vehicles].join(" | ");
+
+      let score = 0;
+      for (const t of tokens) {
+        let tokenScore = 0;
+        if (num === t) tokenScore = 1000;
+        else if (num.startsWith(t)) tokenScore = 600;
+        else if (num.includes(t)) tokenScore = 300;
+        else if (name.startsWith(t)) tokenScore = 500;
+        else if (name.split(/\s+/).some(w => w.startsWith(t))) tokenScore = 400;
+        else if (name.includes(t)) tokenScore = 250;
+        else if (brand.startsWith(t)) tokenScore = 200;
+        else if (vehicles.some(v => v === t)) tokenScore = 350;
+        else if (vehicles.some(v => v.includes(t))) tokenScore = 180;
+        else if (cat.includes(t)) tokenScore = 120;
+        else if (haystack.includes(t)) tokenScore = 60;
+        else return -1; // every token must match somewhere
+        score += tokenScore;
+      }
+      // Tiny boosts: in-stock first, shorter names rank slightly higher
+      if (p.stock_quantity > 0) score += 20;
+      score -= Math.min(20, Math.floor(name.length / 4));
+      return score;
+    };
+
+    return products
+      .map(p => ({ p, s: scoreProduct(p) }))
+      .filter(x => x.s >= 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 8)
+      .map(x => x.p);
   }, [products, search]);
+
+  // Reset highlight when query changes
+  useEffect(() => { setActiveIdx(0); }, [search]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -191,23 +230,46 @@ function BillingPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search part name, number, or vehicle…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => {
+                  if (suggestions.length === 0) return;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setActiveIdx(i => Math.min(i + 1, suggestions.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setActiveIdx(i => Math.max(i - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const pick = suggestions[activeIdx];
+                    if (pick) addToCart(pick);
+                  } else if (e.key === "Escape") {
+                    setSearch("");
+                  }
+                }}
+                placeholder="Search part name, number, brand or vehicle…"
                 className="pl-9 h-12 text-base"
                 autoFocus
               />
             </div>
             {suggestions.length > 0 && (
               <div className="absolute left-4 right-4 top-full mt-1 bg-popover border border-border rounded-md shadow-lg z-20 overflow-hidden">
-                {suggestions.map(p => (
+                {suggestions.map((p, idx) => (
                   <button
-                    key={p.id} onClick={() => addToCart(p)}
+                    key={p.id}
+                    onMouseDown={e => { e.preventDefault(); addToCart(p); }}
+                    onMouseEnter={() => setActiveIdx(idx)}
                     disabled={p.stock_quantity === 0}
-                    className="w-full px-4 py-2.5 flex justify-between items-center hover:bg-surface-alt text-left disabled:opacity-50"
+                    className={`w-full px-4 py-2.5 flex justify-between items-center text-left disabled:opacity-50 ${idx === activeIdx ? "bg-surface-alt" : "hover:bg-surface-alt"}`}
                   >
                     <div className="min-w-0">
                       <div className="font-medium text-sm truncate">{p.part_name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{p.part_number}</div>
+                      <div className="text-xs text-muted-foreground font-mono truncate">
+                        {p.part_number}
+                        {p.brand ? ` · ${p.brand}` : ""}
+                        {p.vehicle_compatibility.length > 0 ? ` · ${p.vehicle_compatibility.slice(0, 2).join(", ")}` : ""}
+                      </div>
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <div className="num font-semibold text-sm">{inr(p.selling_price)}</div>
