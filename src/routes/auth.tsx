@@ -84,7 +84,7 @@ function AuthPage() {
             Track every part, every rupees.
           </h1>
           <p className="text-sidebar-foreground/70 leading-relaxed">
-            Inventory, GST invoicing, udhaar tracking and supplier payments —
+            Inventory, GST invoicing, credit tracking and supplier payments —
             calibrated for the speed of a real spare parts counter.
           </p>
           <div className="grid grid-cols-3 gap-4 pt-4 border-t border-sidebar-border">
