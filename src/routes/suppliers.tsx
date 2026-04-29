@@ -214,8 +214,10 @@ function PurchaseDialog({ supplier, onClose, onSaved }: any) {
   }, [products, orderFrequency]);
 
   function addRow(p: any) {
-    if (rows.find(r => r.product_id === p.id)) return;
-    setRows([...rows, { product_id: p.id, part_number: p.part_number, part_name: p.part_name, quantity: 1, unit_cost: Number(p.purchase_price), current_stock: p.stock_quantity }]);
+    setRows((prevRows) => {
+      if (prevRows.find((r) => r.product_id === p.id)) return prevRows;
+      return [...prevRows, { product_id: p.id, part_number: p.part_number, part_name: p.part_name, quantity: 1, unit_cost: Number(p.purchase_price), current_stock: p.stock_quantity }];
+    });
     setSearch("");
   }
 
