@@ -77,11 +77,11 @@ function AuthPage() {
 
         <div className="relative space-y-6 max-w-md">
           <div className="inline-block px-2 py-1 rounded-sm bg-primary/15 text-primary text-[10px] uppercase tracking-[0.18em] font-semibold">
-            Built for Indian shops
+            Built for Automobiles
           </div>
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
             Bill in seconds.<br />
-            Track every part, every paisa.
+            Track every part, every rupees.
           </h1>
           <p className="text-sidebar-foreground/70 leading-relaxed">
             Inventory, GST invoicing, udhaar tracking and supplier payments —
