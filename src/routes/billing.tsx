@@ -47,6 +47,7 @@ function BillingPage() {
   const [saving, setSaving] = useState(false);
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [customerQuery, setCustomerQuery] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => { void load(); }, []);
   async function load() {
