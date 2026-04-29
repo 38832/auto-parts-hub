@@ -76,22 +76,92 @@ function InventoryPage() {
     setLoading(false);
   }
 
+  // Debounce search query for snappier UX on large catalogs
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 150);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const raw = debouncedQuery.trim().toLowerCase();
     const v = vehicleFilter.trim().toLowerCase();
-    return products.filter(p => {
-      if (showLow && p.stock_quantity > p.min_stock_threshold) return false;
-      if (v && !p.vehicle_compatibility.some(x => x.toLowerCase().includes(v))) return false;
-      if (!q) return true;
-      return (
-        p.part_name.toLowerCase().includes(q) ||
-        p.part_number.toLowerCase().includes(q) ||
-        (p.brand ?? "").toLowerCase().includes(q) ||
-        (p.category ?? "").toLowerCase().includes(q) ||
-        p.vehicle_compatibility.some(x => x.toLowerCase().includes(q))
-      );
-    });
-  }, [products, query, vehicleFilter, showLow]);
+
+    // Normalize: strip punctuation/spaces for part-number matching (e.g. "BP-1234" ~ "bp1234")
+    const normalize = (s: string) => s.toLowerCase().replace(/[\s\-_/.]+/g, "");
+
+    // Split query into tokens for AND matching ("brake swift" → both must match)
+    const tokens = raw.split(/\s+/).filter(Boolean);
+
+    type Scored = { p: Product; score: number };
+    const scored: Scored[] = [];
+
+    for (const p of products) {
+      if (showLow && p.stock_quantity > p.min_stock_threshold) continue;
+      if (v && !p.vehicle_compatibility.some(x => x.toLowerCase().includes(v))) continue;
+
+      if (tokens.length === 0) {
+        scored.push({ p, score: 0 });
+        continue;
+      }
+
+      // Build searchable fields with weights (higher = more important)
+      const fields: { value: string; weight: number; isCode?: boolean }[] = [
+        { value: p.part_name.toLowerCase(), weight: 10 },
+        { value: p.part_number.toLowerCase(), weight: 12, isCode: true },
+        { value: (p.barcode ?? "").toLowerCase(), weight: 12, isCode: true },
+        { value: (p.brand ?? "").toLowerCase(), weight: 6 },
+        { value: (p.category ?? "").toLowerCase(), weight: 4 },
+        { value: p.vehicle_compatibility.join(" ").toLowerCase(), weight: 5 },
+        { value: (p.notes ?? "").toLowerCase(), weight: 1 },
+      ];
+
+      let total = 0;
+      let matchedAll = true;
+
+      for (const tok of tokens) {
+        const tokNorm = normalize(tok);
+        let best = 0;
+
+        for (const f of fields) {
+          if (!f.value) continue;
+
+          // Exact equality → strongest
+          if (f.value === tok) { best = Math.max(best, f.weight * 10); continue; }
+
+          // Prefix match
+          if (f.value.startsWith(tok)) { best = Math.max(best, f.weight * 5); continue; }
+
+          // Word-start match (e.g. "brake pad" matches "pad")
+          if (new RegExp(`\\b${tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(f.value)) {
+            best = Math.max(best, f.weight * 3);
+            continue;
+          }
+
+          // Substring
+          if (f.value.includes(tok)) { best = Math.max(best, f.weight * 2); continue; }
+
+          // Normalized match for codes (handles "BP-1234" vs "bp1234")
+          if (f.isCode && tokNorm && normalize(f.value).includes(tokNorm)) {
+            best = Math.max(best, f.weight * 2);
+            continue;
+          }
+        }
+
+        if (best === 0) { matchedAll = false; break; }
+        total += best;
+      }
+
+      if (matchedAll) scored.push({ p, score: total });
+    }
+
+    // Sort by score (desc), then by name for stable order
+    if (tokens.length > 0) {
+      scored.sort((a, b) => b.score - a.score || a.p.part_name.localeCompare(b.p.part_name));
+    }
+
+    return scored.map(s => s.p);
+  }, [products, debouncedQuery, vehicleFilter, showLow]);
 
   async function handleDelete(p: Product) {
     const { error } = await supabase.from("products").delete().eq("id", p.id);
