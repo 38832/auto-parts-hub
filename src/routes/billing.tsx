@@ -52,7 +52,7 @@ function BillingPage() {
   useEffect(() => { void load(); }, []);
   async function load() {
     const [p, c] = await Promise.all([
-      supabase.from("products").select("id, part_number, part_name, selling_price, stock_quantity, gst_rate, unit, vehicle_compatibility").order("part_name"),
+      supabase.from("products").select("id, part_number, part_name, selling_price, stock_quantity, gst_rate, unit, vehicle_compatibility, brand, category").order("part_name"),
       supabase.from("customers").select("id, name, phone, gstin").order("name"),
     ]);
     setProducts((p.data ?? []) as Product[]);
