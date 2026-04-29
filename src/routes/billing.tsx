@@ -167,47 +167,54 @@ function BillingPage() {
     const customerGstin = customer?.gstin ?? null;
 
     const paid = paymentMode === "credit" ? Number(paidAmount || 0) : totals.total;
+    const credit = Math.max(0, totals.total - paid);
 
+    const { data: invoice, error: invErr } = await supabase.from("invoices").insert({
+      customer_id: customerId,
+      customer_name: customerName || "Walk-in",
+      customer_phone: customerPhone,
+      customer_gstin: customerGstin,
+      subtotal: totals.subtotal,
+      discount: Number(discount || 0),
+      gst_amount: totals.gstAmount,
+      total: totals.total,
+      paid_amount: paid,
+      credit_amount: credit,
+      payment_mode: paymentMode,
+      notes: notes || null,
+    }).select().single();
+
+    if (invErr || !invoice) { setSaving(false); toast.error(friendlyError(invErr, "Failed to create invoice")); return; }
+
+    // insert items
     const itemsPayload = cart.map(i => ({
-      product_id: i.product_id,
-      part_number: i.part_number,
-      part_name: i.part_name,
-      quantity: i.quantity,
-      unit_price: i.unit_price,
-      gst_rate: i.gst_rate,
-      line_total: i.quantity * i.unit_price,
+      invoice_id: invoice.id, product_id: i.product_id,
+      part_number: i.part_number, part_name: i.part_name,
+      quantity: i.quantity, unit_price: i.unit_price,
+      gst_rate: i.gst_rate, line_total: i.quantity * i.unit_price,
     }));
+    await supabase.from("invoice_items").insert(itemsPayload);
 
-    const { data, error } = await supabase.rpc("create_invoice_with_items", {
-      p_customer_id: customerId,
-      p_customer_name: customerName || "Walk-in",
-      p_customer_phone: customerPhone,
-      p_customer_gstin: customerGstin,
-      p_subtotal: totals.subtotal,
-      p_discount: Number(discount || 0),
-      p_gst_amount: totals.gstAmount,
-      p_total: totals.total,
-      p_paid_amount: paid,
-      p_payment_mode: paymentMode,
-      p_notes: notes || null,
-      p_items: itemsPayload,
-    });
-
-    setSaving(false);
-
-    if (error || !data || data.length === 0) {
-      const message = error?.message ?? "Failed to create invoice";
-      if (message.includes("Insufficient stock")) toast.error("Stock changed while billing. Please review cart quantities.");
-      else if (message.includes("Credit invoices require a selected customer")) toast.error("Select a customer before using credit payment mode.");
-      else if (message.includes("Paid amount cannot exceed invoice total")) toast.error("Paid amount cannot be more than invoice total.");
-      else if (message.includes("Invoice must contain at least one item")) toast.error("Add at least one item before checkout.");
-      else toast.error(friendlyError(error, "Failed to create invoice"));
-      return;
+    // deduct stock + record movements
+    for (const i of cart) {
+      const newStock = i.max_stock - i.quantity;
+      await supabase.from("products").update({ stock_quantity: newStock }).eq("id", i.product_id);
+      await supabase.from("stock_movements").insert({
+        product_id: i.product_id, movement_type: "out", quantity: i.quantity,
+        reference_type: "invoice", reference_id: invoice.id,
+      });
     }
 
-    const invoice = data[0];
+    // update customer credit
+    if (credit > 0 && customerId) {
+      const cust = customers.find(c => c.id === customerId);
+      const newBalance = Number((cust as any)?.credit_balance ?? 0) + credit;
+      await supabase.from("customers").update({ credit_balance: newBalance }).eq("id", customerId);
+    }
+
+    setSaving(false);
     toast.success(`Invoice ${invoice.invoice_number} created`);
-    navigate({ to: "/invoices/$id", params: { id: invoice.invoice_id } });
+    navigate({ to: "/invoices/$id", params: { id: invoice.id } });
   }
 
   return (
