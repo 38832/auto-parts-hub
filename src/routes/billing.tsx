@@ -23,6 +23,7 @@ export const Route = createFileRoute("/billing")({
 interface Product {
   id: string; part_number: string; part_name: string; selling_price: number;
   stock_quantity: number; gst_rate: number; unit: string; vehicle_compatibility: string[];
+  brand: string | null; category: string | null;
 }
 interface Customer { id: string; name: string; phone: string | null; gstin: string | null; }
 interface CartItem {
