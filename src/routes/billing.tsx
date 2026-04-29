@@ -60,14 +60,51 @@ function BillingPage() {
   }
 
   const suggestions = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return products.filter(p =>
-      p.part_name.toLowerCase().includes(q) ||
-      p.part_number.toLowerCase().includes(q) ||
-      p.vehicle_compatibility.some(v => v.toLowerCase().includes(q))
-    ).slice(0, 8);
+    const raw = search.trim().toLowerCase();
+    if (!raw) return [];
+    const tokens = raw.split(/\s+/).filter(Boolean);
+
+    const scoreProduct = (p: Product): number => {
+      const name = p.part_name.toLowerCase();
+      const num = p.part_number.toLowerCase();
+      const brand = (p.brand ?? "").toLowerCase();
+      const cat = (p.category ?? "").toLowerCase();
+      const vehicles = p.vehicle_compatibility.map(v => v.toLowerCase());
+      const haystack = [name, num, brand, cat, ...vehicles].join(" | ");
+
+      let score = 0;
+      for (const t of tokens) {
+        let tokenScore = 0;
+        if (num === t) tokenScore = 1000;
+        else if (num.startsWith(t)) tokenScore = 600;
+        else if (num.includes(t)) tokenScore = 300;
+        else if (name.startsWith(t)) tokenScore = 500;
+        else if (name.split(/\s+/).some(w => w.startsWith(t))) tokenScore = 400;
+        else if (name.includes(t)) tokenScore = 250;
+        else if (brand.startsWith(t)) tokenScore = 200;
+        else if (vehicles.some(v => v === t)) tokenScore = 350;
+        else if (vehicles.some(v => v.includes(t))) tokenScore = 180;
+        else if (cat.includes(t)) tokenScore = 120;
+        else if (haystack.includes(t)) tokenScore = 60;
+        else return -1; // every token must match somewhere
+        score += tokenScore;
+      }
+      // Tiny boosts: in-stock first, shorter names rank slightly higher
+      if (p.stock_quantity > 0) score += 20;
+      score -= Math.min(20, Math.floor(name.length / 4));
+      return score;
+    };
+
+    return products
+      .map(p => ({ p, s: scoreProduct(p) }))
+      .filter(x => x.s >= 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 8)
+      .map(x => x.p);
   }, [products, search]);
+
+  // Reset highlight when query changes
+  useEffect(() => { setActiveIdx(0); }, [search]);
 
   const filteredCustomers = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
