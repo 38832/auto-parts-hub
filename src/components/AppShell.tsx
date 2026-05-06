@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/billing", label: "New Invoice", icon: Receipt, primary: true },
+  { to: "/billing", label: "New Invoice", icon: Receipt },
   { to: "/inventory", label: "Inventory", icon: Package },
   { to: "/invoices", label: "Invoices", icon: ShoppingCart },
   { to: "/customers", label: "Customers", icon: Users },
@@ -86,7 +86,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/75 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60",
-                  item.primary && !active && "text-primary",
                 )}
               >
                 {active && (
