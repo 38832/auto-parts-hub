@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/billing", label: "New Invoice", icon: Receipt, primary: true },
+  { to: "/billing", label: "New Invoice", icon: Receipt },
   { to: "/inventory", label: "Inventory", icon: Package },
   { to: "/invoices", label: "Invoices", icon: ShoppingCart },
   { to: "/customers", label: "Customers", icon: Users },
