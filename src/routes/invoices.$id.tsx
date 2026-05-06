@@ -1,11 +1,15 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errors";
 import { inr } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download, Share2, Printer } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ArrowLeft, Download, Share2, Printer, IndianRupee } from "lucide-react";
 import { format } from "date-fns";
 import { generateInvoicePDF, shareViaWhatsApp } from "@/lib/invoice-pdf";
 import { toast } from "sonner";
