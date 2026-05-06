@@ -1,11 +1,15 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { RequireAuth } from "@/components/RequireAuth";
 import { AppShell } from "@/components/AppShell";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyError } from "@/lib/errors";
 import { inr } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download, Share2, Printer } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ArrowLeft, Download, Share2, Printer, IndianRupee } from "lucide-react";
 import { format } from "date-fns";
 import { generateInvoicePDF, shareViaWhatsApp } from "@/lib/invoice-pdf";
 import { toast } from "sonner";
@@ -22,19 +26,20 @@ function InvoiceDetail() {
   const [inv, setInv] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [shopName, setShopName] = useState<string>("SparePilot Shop");
+  const [payOpen, setPayOpen] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      const [{ data: i }, { data: it }, { data: profile }] = await Promise.all([
-        supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
-        supabase.from("invoice_items").select("*").eq("invoice_id", id),
-        supabase.from("profiles").select("shop_name").maybeSingle(),
-      ]);
-      setInv(i);
-      setItems(it ?? []);
-      if (profile?.shop_name) setShopName(profile.shop_name);
-    })();
-  }, [id]);
+  async function load() {
+    const [{ data: i }, { data: it }, { data: profile }] = await Promise.all([
+      supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
+      supabase.from("invoice_items").select("*").eq("invoice_id", id),
+      supabase.from("profiles").select("shop_name").maybeSingle(),
+    ]);
+    setInv(i);
+    setItems(it ?? []);
+    if (profile?.shop_name) setShopName(profile.shop_name);
+  }
+
+  useEffect(() => { void load(); }, [id]);
 
   function buildData() {
     return { ...inv, shop_name: shopName, items };
@@ -129,9 +134,18 @@ function InvoiceDetail() {
                 <span className="num text-2xl font-bold text-primary">{inr(inv.total)}</span>
               </div>
               <Row label={`Paid (${inv.payment_mode})`} value={inr(inv.paid_amount)} />
-              {inv.credit_amount > 0 && (
-                <div className="flex justify-between text-warning font-semibold">
-                  <span>Credit Due</span><span className="num">{inr(inv.credit_amount)}</span>
+              {inv.credit_amount > 0 ? (
+                <>
+                  <div className="flex justify-between text-warning font-semibold">
+                    <span>Credit Due</span><span className="num">{inr(inv.credit_amount)}</span>
+                  </div>
+                  <Button size="sm" className="w-full mt-2" onClick={() => setPayOpen(true)}>
+                    <IndianRupee className="h-3.5 w-3.5 mr-1" /> Receive Payment
+                  </Button>
+                </>
+              ) : Number(inv.paid_amount) >= Number(inv.total) && (
+                <div className="flex justify-between text-success font-semibold">
+                  <span>Status</span><span>PAID</span>
                 </div>
               )}
             </div>
@@ -140,7 +154,81 @@ function InvoiceDetail() {
           {inv.notes && <div className="text-sm text-muted-foreground border-t border-border pt-4">📝 {inv.notes}</div>}
         </div>
       </div>
+
+      <SettleDialog
+        open={payOpen}
+        onOpenChange={setPayOpen}
+        inv={inv}
+        onSaved={() => { setPayOpen(false); void load(); }}
+      />
     </div>
+  );
+}
+
+function SettleDialog({ open, onOpenChange, inv, onSaved }: { open: boolean; onOpenChange: (v: boolean) => void; inv: any; onSaved: () => void }) {
+  const [amount, setAmount] = useState<number | "">("");
+  const [mode, setMode] = useState("cash");
+
+  useEffect(() => { if (open) { setAmount(Number(inv?.credit_amount ?? 0)); setMode("cash"); } }, [open, inv]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const amt = Number(amount);
+    if (!amt || amt <= 0) { toast.error("Enter amount"); return; }
+    if (amt > Number(inv.credit_amount)) { toast.error("Cannot exceed credit due"); return; }
+
+    const newPaid = Number(inv.paid_amount) + amt;
+    const newCredit = Number(inv.credit_amount) - amt;
+
+    const { error: e1 } = await supabase.from("invoices")
+      .update({ paid_amount: newPaid, credit_amount: newCredit })
+      .eq("id", inv.id);
+
+    let e2: any = null;
+    if (inv.customer_id) {
+      const { data: c } = await supabase.from("customers").select("credit_balance").eq("id", inv.customer_id).maybeSingle();
+      if (c) {
+        const newBal = Math.max(0, Number(c.credit_balance) - amt);
+        ({ error: e2 } = await supabase.from("customers").update({ credit_balance: newBal }).eq("id", inv.customer_id));
+      }
+    }
+
+    const { error: e3 } = await supabase.from("payments").insert({
+      party_type: "customer",
+      party_id: inv.customer_id ?? inv.id,
+      amount: amt,
+      payment_mode: mode as any,
+      notes: `Settlement for ${inv.invoice_number}`,
+    });
+
+    if (e1 || e2 || e3) toast.error(friendlyError(e1 || e2 || e3));
+    else { toast.success(`Received ${inr(amt)}`); onSaved(); }
+  }
+
+  if (!inv) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Receive payment for {inv.invoice_number}</DialogTitle></DialogHeader>
+        <form onSubmit={save} className="space-y-3">
+          <div className="bg-surface-alt rounded p-3 flex justify-between text-sm">
+            <span>Credit Due</span>
+            <span className="num font-bold text-warning">{inr(inv.credit_amount)}</span>
+          </div>
+          <div><Label>Amount ₹</Label><Input type="number" value={amount} onChange={e => setAmount(e.target.value === "" ? "" : Number(e.target.value))} className="h-11 font-mono text-lg" autoFocus /></div>
+          <div><Label>Mode</Label>
+            <select value={mode} onChange={e => setMode(e.target.value)} className="w-full h-11 rounded-md border border-input bg-background px-3 text-sm">
+              <option value="cash">Cash</option><option value="upi">UPI</option><option value="card">Card</option>
+            </select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit">Record Payment</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
