@@ -86,7 +86,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   active
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
                     : "text-sidebar-foreground/75 hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60",
-                  item.primary && !active && "text-primary",
                 )}
               >
                 {active && (
