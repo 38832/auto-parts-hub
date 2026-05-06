@@ -26,19 +26,20 @@ function InvoiceDetail() {
   const [inv, setInv] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
   const [shopName, setShopName] = useState<string>("SparePilot Shop");
+  const [payOpen, setPayOpen] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      const [{ data: i }, { data: it }, { data: profile }] = await Promise.all([
-        supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
-        supabase.from("invoice_items").select("*").eq("invoice_id", id),
-        supabase.from("profiles").select("shop_name").maybeSingle(),
-      ]);
-      setInv(i);
-      setItems(it ?? []);
-      if (profile?.shop_name) setShopName(profile.shop_name);
-    })();
-  }, [id]);
+  async function load() {
+    const [{ data: i }, { data: it }, { data: profile }] = await Promise.all([
+      supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
+      supabase.from("invoice_items").select("*").eq("invoice_id", id),
+      supabase.from("profiles").select("shop_name").maybeSingle(),
+    ]);
+    setInv(i);
+    setItems(it ?? []);
+    if (profile?.shop_name) setShopName(profile.shop_name);
+  }
+
+  useEffect(() => { void load(); }, [id]);
 
   function buildData() {
     return { ...inv, shop_name: shopName, items };
